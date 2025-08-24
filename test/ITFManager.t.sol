@@ -11,6 +11,7 @@ contract MockERC20 is ERC20 {
     constructor() ERC20("Mock USD", "mUSD") {
         _mint(msg.sender, 1e30);
     }
+
     function mint(address to, uint256 amt) external {
         _mint(to, amt);
     }
@@ -18,15 +19,16 @@ contract MockERC20 is ERC20 {
 
 // --- Mocks for failing test
 contract FailingERC20 is ERC20 {
-    constructor() ERC20("Failing USD", "fUSD") {}
+    constructor() ERC20("Failing USD", "fUSD") { }
 
-    function mint(address to, uint256 amt) external { _mint(to, amt); }
+    function mint(address to, uint256 amt) external {
+        _mint(to, amt);
+    }
 
     function transferFrom(address, address, uint256) public pure override returns (bool) {
         return false;
     }
 }
-
 
 contract ITFManagerTest is Test {
     AssetToken assetToken;
@@ -38,9 +40,9 @@ contract ITFManagerTest is Test {
     uint256 constant SUPPLY = 500e18;
 
     address tokenTreasury = address(0xA11CE);
-    address treasury      = address(0xFEE);
-    address oracle        = address(0xBEEF);
-    address investor      = address(0xCEEF);
+    address treasury = address(0xFEE);
+    address oracle = address(0xBEEF);
+    address investor = address(0xCEEF);
 
     uint256 initialNav = 2e18;
     uint256 initialFee = 50;
@@ -58,8 +60,8 @@ contract ITFManagerTest is Test {
             address(base),
             treasury,
             oracle,
-            initialNav,  // 2e18
-            initialFee   // 50 bps
+            initialNav, // 2e18
+            initialFee // 50 bps
         );
 
         vm.prank(tokenTreasury);
@@ -91,12 +93,16 @@ contract ITFManagerTest is Test {
 
     function test_Constructor_RevertIf_TreasuryZero() public {
         vm.expectRevert(ITFManager.TreasuryZero.selector);
-        new ITFManager(address(assetToken), address(base), address(0), oracle, initialNav, initialFee);
+        new ITFManager(
+            address(assetToken), address(base), address(0), oracle, initialNav, initialFee
+        );
     }
 
     function test_Constructor_RevertIf_OracleZero() public {
         vm.expectRevert(ITFManager.OracleZero.selector);
-        new ITFManager(address(assetToken), address(base), treasury, address(0), initialNav, initialFee);
+        new ITFManager(
+            address(assetToken), address(base), treasury, address(0), initialNav, initialFee
+        );
     }
 
     function test_Constructor_RevertIf_NavZero() public {
@@ -108,7 +114,6 @@ contract ITFManagerTest is Test {
         vm.expectRevert(ITFManager.FeeTooHigh.selector);
         new ITFManager(address(assetToken), address(base), treasury, oracle, initialNav, 10_001);
     }
-
 
     function test_SetOracle_OnlyOwner() public {
         vm.prank(investor);
@@ -182,18 +187,18 @@ contract ITFManagerTest is Test {
         assertEq(manager.nav(), 3e18);
     }
 
-   function test_Invest_CalculatesTokensOut_Floor_AndTransfers() public {
-        uint256 amountIn    = 11e18;                             // brut
-        uint256 fee         = (amountIn * initialFee) / 10_000;  // 50 bps
-        uint256 netIn       = amountIn - fee;                    // 10.945e18
-        uint256 expectedOut = (netIn * 1e18) / initialNav;       // 5.4725e18
-        expectedOut = (expectedOut / 1e18) * 1e18;               // floor => 5e18
+    function test_Invest_CalculatesTokensOut_Floor_AndTransfers() public {
+        uint256 amountIn = 11e18; // brut
+        uint256 fee = (amountIn * initialFee) / 10_000; // 50 bps
+        uint256 netIn = amountIn - fee; // 10.945e18
+        uint256 expectedOut = (netIn * 1e18) / initialNav; // 5.4725e18
+        expectedOut = (expectedOut / 1e18) * 1e18; // floor => 5e18
 
         vm.prank(investor);
         base.approve(address(manager), amountIn);
 
-        uint256 m0   = base.balanceOf(address(manager));
-        uint256 t0   = base.balanceOf(treasury);
+        uint256 m0 = base.balanceOf(address(manager));
+        uint256 t0 = base.balanceOf(treasury);
         uint256 itf0 = assetToken.balanceOf(investor);
 
         vm.recordLogs();
@@ -213,7 +218,7 @@ contract ITFManagerTest is Test {
         uint256 evAmount;
         uint256 evTokens;
 
-        for (uint i = 0; i < entries.length; i++) {
+        for (uint256 i = 0; i < entries.length; i++) {
             if (entries[i].topics.length > 0 && entries[i].topics[0] == sig) {
                 found = true;
                 if (entries[i].topics.length == 2) {
@@ -234,7 +239,7 @@ contract ITFManagerTest is Test {
         assertEq(evTokens, expectedOut, "event tokensOut mismatch");
     }
 
-   function test_Redeem_CalculatesNet_AppliesFee_BurnsTokens_TransfersBase() public {
+    function test_Redeem_CalculatesNet_AppliesFee_BurnsTokens_TransfersBase() public {
         vm.prank(tokenTreasury);
         assetToken.transfer(investor, 10e18);
 
@@ -242,8 +247,8 @@ contract ITFManagerTest is Test {
         assetToken.approve(address(manager), 10e18);
 
         uint256 expectedGross = 20e18;
-        uint256 expectedFee   = (expectedGross * initialFee) / 10_000;
-        uint256 expectedNet   = expectedGross - expectedFee;           
+        uint256 expectedFee = (expectedGross * initialFee) / 10_000;
+        uint256 expectedNet = expectedGross - expectedFee;
 
         uint256 bal0 = base.balanceOf(investor);
 
@@ -274,22 +279,13 @@ contract ITFManagerTest is Test {
     }
 
     function test_Invest_RevertIf_BaseTransferFromFail() public {
-        // déploie un baseAsset qui retourne false sur transferFrom
         FailingERC20 bad = new FailingERC20();
-        // prépare soldes/approvals côté investor
         bad.mint(investor, 10e18);
 
-        // déploie un nouveau manager avec ce baseAsset qui échoue
         ITFManager badManager = new ITFManager(
-            address(assetToken),
-            address(bad),
-            treasury,
-            oracle,
-            initialNav,
-            initialFee
+            address(assetToken), address(bad), treasury, oracle, initialNav, initialFee
         );
 
-        // approvals requis (même si transferFrom retournera false)
         vm.prank(tokenTreasury);
         assetToken.approve(address(badManager), type(uint256).max);
 
@@ -302,20 +298,17 @@ contract ITFManagerTest is Test {
     }
 
     function test_SetOracle_RevertIf_Zero() public {
-        // si tu as une erreur dédiée, remplace vm.expectRevert() par le selector ad hoc
         vm.expectRevert();
         manager.setOracle(address(0));
     }
 
-    // setFee trop haut déjà testé ; ajoute borne haute exacte si tu as MAX_FEE_BPS
     function test_SetFee_RevertIf_TooHigh_ExactBoundary() public {
-        // remplace 10_001 par MAX_FEE_BPS+1 si exposé publiquement
         vm.expectRevert(ITFManager.FeeTooHigh.selector);
         manager.setFee(10_001);
     }
 
     function test_Invest_FeeZero_Path() public {
-        manager.setFee(0); // owner = address(this)
+        manager.setFee(0);
         uint256 amountIn = 11e18;
 
         vm.prank(investor);
@@ -328,7 +321,6 @@ contract ITFManagerTest is Test {
         vm.prank(investor);
         uint256 out = manager.invest(amountIn);
 
-        // tokensOut = floor(11/2) = 5e18 (avec floor à 1e18)
         assertEq(out, 5e18);
         assertEq(assetToken.balanceOf(investor) - itf0, 5e18);
         assertEq(base.balanceOf(address(manager)) - m0, amountIn, "manager should get all (no fee)");
@@ -341,11 +333,10 @@ contract ITFManagerTest is Test {
         vm.prank(investor);
         base.approve(address(manager), 10e18);
 
-        vm.expectRevert(); // Pausable revert
+        vm.expectRevert();
         vm.prank(investor);
         manager.invest(10e18);
 
-        // prépare des ITF pour redeem
         vm.prank(tokenTreasury);
         assetToken.transfer(investor, 1e18);
         vm.prank(investor);
@@ -357,7 +348,6 @@ contract ITFManagerTest is Test {
 
         manager.unpause();
 
-        // redevient OK
         vm.prank(investor);
         uint256 out = manager.invest(10e18);
         assertGt(out, 0);
@@ -390,7 +380,4 @@ contract ITFManagerTest is Test {
         uint256 out = manager.invest(amountIn);
         assertGt(out, 0);
     }
-
-
-
 }

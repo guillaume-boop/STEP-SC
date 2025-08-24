@@ -11,8 +11,8 @@ contract AssetTokenTest is Test {
     string constant SYMBOL = "ITF-PARIS";
     uint256 constant SUPPLY = 500e18;
     address manager = address(0xA11CE);
-    address alice   = address(0xB0B);
-    address bob     = address(0xC0B);
+    address alice = address(0xB0B);
+    address bob = address(0xC0B);
 
     function setUp() public {
         // deployer = address(this) sera owner (OZ v5 via Ownable(msg.sender))
@@ -65,9 +65,8 @@ contract AssetTokenTest is Test {
     // --- Admin setManager
 
     function test_SetManager_OnlyOwner() public {
-        // Alice tente de changer => revert OnlyOwner
         vm.prank(alice);
-        vm.expectRevert(); // revert générique d'OZ Ownable
+        vm.expectRevert();
         token.setManager(alice);
     }
 
@@ -91,10 +90,7 @@ contract AssetTokenTest is Test {
         assertEq(token.getManager(), newManager);
     }
 
-    // --- Invariants simples
-
     function test_TotalSupply_ConstantAfterTransfers() public {
-        // séries de transferts
         vm.startPrank(manager);
         token.transfer(alice, 20e18);
         token.transfer(bob, 30e18);

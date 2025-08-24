@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
-import {SafeERC20, IERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import { SafeERC20, IERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "./AssetToken.sol";
 
 contract ITFManager is Ownable, ReentrancyGuard, Pausable {
@@ -45,7 +45,6 @@ contract ITFManager is Ownable, ReentrancyGuard, Pausable {
         address oracle_,
         uint256 initialNav,
         uint256 feeBps_
-
     ) Ownable(msg.sender) {
         if (assetToken_ == address(0)) revert AssetTokenZero();
         if (baseAsset_ == address(0)) revert BaseAssetZero();
@@ -55,16 +54,21 @@ contract ITFManager is Ownable, ReentrancyGuard, Pausable {
         if (feeBps_ > 10_000) revert FeeTooHigh();
 
         assetToken = AssetToken(assetToken_);
-        baseAsset  = IERC20(baseAsset_);
-        treasury   = treasury_;
-        oracle     = oracle_;
-        nav        = initialNav;
-        feeBps     = feeBps_;
+        baseAsset = IERC20(baseAsset_);
+        treasury = treasury_;
+        oracle = oracle_;
+        nav = initialNav;
+        feeBps = feeBps_;
         navUpdatedAt = uint64(block.timestamp);
     }
 
-    function pause() external onlyOwner { _pause(); }
-    function unpause() external onlyOwner { _unpause(); }
+    function pause() external onlyOwner {
+        _pause();
+    }
+
+    function unpause() external onlyOwner {
+        _unpause();
+    }
 
     // --- Admin
     function setOracle(address newOracle) external onlyOwner {
@@ -94,7 +98,6 @@ contract ITFManager is Ownable, ReentrancyGuard, Pausable {
         emit NavMaxAgeChanged(old, newAge);
     }
 
-
     // --- Oracle
     function updateNav(uint256 newNav) external {
         if (msg.sender != oracle) revert NotOracle();
@@ -111,15 +114,21 @@ contract ITFManager is Ownable, ReentrancyGuard, Pausable {
         _;
     }
 
-    function invest(uint256 amountIn) external nonReentrant whenNotPaused navFresh returns (uint256 tokensOut) {
+    function invest(uint256 amountIn)
+        external
+        nonReentrant
+        whenNotPaused
+        navFresh
+        returns (uint256 tokensOut)
+    {
         if (amountIn == 0) revert AmountInZero();
         if (nav == 0) revert NavZero();
 
-        uint256 fee   = (amountIn * feeBps) / 10_000;
+        uint256 fee = (amountIn * feeBps) / 10_000;
         uint256 netIn = amountIn - fee;
 
         uint256 raw = (netIn * 1e18) / nav;
-        tokensOut   = (raw / 1e18) * 1e18;
+        tokensOut = (raw / 1e18) * 1e18;
         if (tokensOut == 0) revert TokensOutZero();
 
         baseAsset.safeTransferFrom(msg.sender, address(this), netIn);
@@ -133,12 +142,18 @@ contract ITFManager is Ownable, ReentrancyGuard, Pausable {
         emit Invest(msg.sender, amountIn, tokensOut);
     }
 
-    function redeem(uint256 tokensIn) external nonReentrant whenNotPaused navFresh returns (uint256 amountOut) {
+    function redeem(uint256 tokensIn)
+        external
+        nonReentrant
+        whenNotPaused
+        navFresh
+        returns (uint256 amountOut)
+    {
         if (tokensIn == 0) revert AmountInZero();
 
         uint256 gross = (tokensIn * nav) / 1e18;
-        uint256 fee   = (gross * feeBps) / 10_000;
-        amountOut     = gross - fee;
+        uint256 fee = (gross * feeBps) / 10_000;
+        amountOut = gross - fee;
 
         address tokenTreasury = assetToken.getManager();
         IERC20(address(assetToken)).safeTransferFrom(msg.sender, tokenTreasury, tokensIn);
