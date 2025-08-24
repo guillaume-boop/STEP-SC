@@ -18,6 +18,8 @@ contract ITFManager is Ownable, ReentrancyGuard, Pausable {
     uint256 public feeBps;
     uint64 public navUpdatedAt;
     uint64 public maxNavAge = 1 days;
+    uint8 public immutable baseDecimals;
+    uint256 private immutable scale;
 
     event NavUpdated(uint256 oldNav, uint256 newNav);
     event Invest(address indexed investor, uint256 amountIn, uint256 tokensOut);
@@ -37,6 +39,7 @@ contract ITFManager is Ownable, ReentrancyGuard, Pausable {
     error AmountInZero();
     error TokensOutZero();
     error StaleNav();
+    error BaseDecimalsTooHigh();
 
     constructor(
         address assetToken_,
@@ -59,6 +62,12 @@ contract ITFManager is Ownable, ReentrancyGuard, Pausable {
         oracle = oracle_;
         nav = initialNav;
         feeBps = feeBps_;
+
+        uint8 dec = ERC20(address(baseAsset)).decimals();
+        if (dec > 18) revert BaseDecimalsTooHigh();
+        baseDecimals = dec;
+        scale = 10 ** (18 - dec);
+
         navUpdatedAt = uint64(block.timestamp);
     }
 
@@ -127,14 +136,13 @@ contract ITFManager is Ownable, ReentrancyGuard, Pausable {
         uint256 fee = (amountIn * feeBps) / 10_000;
         uint256 netIn = amountIn - fee;
 
-        uint256 raw = (netIn * 1e18) / nav;
+        uint256 netIn18 = _to18(netIn);
+        uint256 raw = (netIn18 * 1e18) / nav;
         tokensOut = (raw / 1e18) * 1e18;
         if (tokensOut == 0) revert TokensOutZero();
 
         baseAsset.safeTransferFrom(msg.sender, address(this), netIn);
-        if (fee != 0) {
-            baseAsset.safeTransferFrom(msg.sender, treasury, fee);
-        }
+        if (fee != 0) baseAsset.safeTransferFrom(msg.sender, treasury, fee);
 
         address tokenTreasury = assetToken.getManager();
         IERC20(address(assetToken)).safeTransferFrom(tokenTreasury, msg.sender, tokensOut);
@@ -151,18 +159,29 @@ contract ITFManager is Ownable, ReentrancyGuard, Pausable {
     {
         if (tokensIn == 0) revert AmountInZero();
 
-        uint256 gross = (tokensIn * nav) / 1e18;
-        uint256 fee = (gross * feeBps) / 10_000;
-        amountOut = gross - fee;
+        uint256 gross18 = (tokensIn * nav) / 1e18; // 18d
+        uint256 fee18 = (gross18 * feeBps) / 10_000; // 18d
+        uint256 net18 = gross18 - fee18; // 18d
+
+        amountOut = _from18(net18);
+        uint256 fee = _from18(fee18);
 
         address tokenTreasury = assetToken.getManager();
         IERC20(address(assetToken)).safeTransferFrom(msg.sender, tokenTreasury, tokensIn);
 
         baseAsset.safeTransfer(msg.sender, amountOut);
-        if (fee != 0) {
-            baseAsset.safeTransfer(treasury, fee);
-        }
+        if (fee > 0) baseAsset.safeTransfer(treasury, fee);
 
         emit Redeem(msg.sender, tokensIn, amountOut);
+    }
+
+    function _to18(uint256 amt) internal view returns (uint256) {
+        if (baseDecimals == 18) return amt;
+        return amt * scale;
+    }
+
+    function _from18(uint256 amt18) internal view returns (uint256) {
+        if (baseDecimals == 18) return amt18;
+        return amt18 / scale;
     }
 }

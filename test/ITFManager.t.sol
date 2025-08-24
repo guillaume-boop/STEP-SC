@@ -17,6 +17,12 @@ contract MockERC20 is ERC20 {
     }
 }
 
+contract MockUSDC is ERC20 {
+    constructor() ERC20("Mock USDC", "mUSDC") {}
+    function decimals() public pure override returns (uint8) { return 6; }
+    function mint(address to, uint256 amt) external { _mint(to, amt); }
+}
+
 // --- Mocks for failing test
 contract FailingERC20 is ERC20 {
     constructor() ERC20("Failing USD", "fUSD") { }
@@ -380,4 +386,94 @@ contract ITFManagerTest is Test {
         uint256 out = manager.invest(amountIn);
         assertGt(out, 0);
     }
+
+    function test_Invest_USDC6_Calcul_Floor_AndTransfers() public {
+        // Déploie un baseAsset en 6 décimales
+        MockUSDC usdc = new MockUSDC();
+        // Donne du solde à l’investor et au manager
+        usdc.mint(investor, 1_000_000_000); // 1,000 USDC (6d)
+        // Nouveau manager avec USDC 6d
+        ITFManager m2 = new ITFManager(
+            address(assetToken),
+            address(usdc),
+            treasury,
+            oracle,
+            initialNav, // 2e18
+            initialFee  // 50 bps
+        );
+        // Approve du trésor d’ITF au nouveau manager
+        vm.prank(tokenTreasury);
+        assetToken.approve(address(m2), type(uint256).max);
+
+        // amountIn = 11 USDC (6d)
+        uint256 amountIn = 11_000_000; // 11.000000
+        uint256 fee      = (amountIn * initialFee) / 10_000; // 0.5% = 55_000
+        uint256 netIn    = amountIn - fee;                    // 10_94500
+
+        // Conversion vers 18d: * 1e12
+        uint256 netIn18  = uint256(netIn) * 1e12;            // 10.945e18
+        // tokensOut = floor((netIn18 * 1e18 / nav) / 1e18) * 1e18
+        uint256 raw      = (netIn18 * 1e18) / initialNav;    // /2 => 5.4725e18
+        uint256 expectedOut = (raw / 1e18) * 1e18;           // floor -> 5e18
+
+        vm.prank(investor);
+        usdc.approve(address(m2), amountIn);
+
+        uint256 manager0 = usdc.balanceOf(address(m2));
+        uint256 treasury0 = usdc.balanceOf(treasury);
+        uint256 itf0 = assetToken.balanceOf(investor);
+
+        vm.prank(investor);
+        uint256 out = m2.invest(amountIn);
+
+        assertEq(out, expectedOut, "tokensOut mismatch (6d)");
+        assertEq(assetToken.balanceOf(investor) - itf0, expectedOut, "ITF to investor");
+        assertEq(usdc.balanceOf(address(m2)) - manager0, netIn, "base to manager (netIn 6d)");
+        assertEq(usdc.balanceOf(treasury) - treasury0, fee, "fee to treasury (6d)");
+    }
+
+    function test_Redeem_USDC6_Calcul_FeeAndTransfers() public {
+        // Base 6d
+        MockUSDC usdc = new MockUSDC();
+        // Manager 6d
+        ITFManager m2 = new ITFManager(
+            address(assetToken),
+            address(usdc),
+            treasury,
+            oracle,
+            initialNav, // 2e18
+            initialFee  // 50 bps
+        );
+        vm.prank(tokenTreasury);
+        assetToken.approve(address(m2), type(uint256).max);
+
+        // Seed: le manager doit avoir du baseAsset pour payer le redeem
+        usdc.mint(address(m2), 1_000_000_000); // 1,000 USDC
+
+        // Donne 10 ITF à l’investor
+        vm.prank(tokenTreasury);
+        assetToken.transfer(investor, 10e18);
+        vm.prank(investor);
+        assetToken.approve(address(m2), 10e18);
+
+        // Gross (18d) = 10e18 * 2e18 / 1e18 = 20e18
+        // fee18 = 20e18 * 50 / 10000 = 0.1e18
+        // net18 = 19.9e18
+        // Convert 18d -> 6d : / 1e12
+        uint256 expectedGross6 = 20e18 / 1e12;      // 20_000_000
+        uint256 expectedFee6   = (expectedGross6 * initialFee) / 10_000; // 100_000
+        uint256 expectedNet6   = expectedGross6 - expectedFee6;          // 19_900_000
+
+        uint256 user0 = usdc.balanceOf(investor);
+        uint256 treas0 = usdc.balanceOf(treasury);
+
+        vm.prank(investor);
+        uint256 out = m2.redeem(10e18);
+
+        assertEq(out, expectedNet6, "amountOut (6d)");
+        assertEq(usdc.balanceOf(investor) - user0, expectedNet6, "user gets net (6d)");
+        assertEq(usdc.balanceOf(treasury) - treas0, expectedFee6, "treasury gets fee (6d)");
+        assertEq(assetToken.balanceOf(investor), 0, "tokens burned (transferred back to tokenTreasury)");
+    }
+
 }
