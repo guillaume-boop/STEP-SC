@@ -18,9 +18,15 @@ contract MockERC20 is ERC20 {
 }
 
 contract MockUSDC is ERC20 {
-    constructor() ERC20("Mock USDC", "mUSDC") {}
-    function decimals() public pure override returns (uint8) { return 6; }
-    function mint(address to, uint256 amt) external { _mint(to, amt); }
+    constructor() ERC20("Mock USDC", "mUSDC") { }
+
+    function decimals() public pure override returns (uint8) {
+        return 6;
+    }
+
+    function mint(address to, uint256 amt) external {
+        _mint(to, amt);
+    }
 }
 
 // --- Mocks for failing test
@@ -399,7 +405,7 @@ contract ITFManagerTest is Test {
             treasury,
             oracle,
             initialNav, // 2e18
-            initialFee  // 50 bps
+            initialFee // 50 bps
         );
         // Approve du trésor d’ITF au nouveau manager
         vm.prank(tokenTreasury);
@@ -407,14 +413,14 @@ contract ITFManagerTest is Test {
 
         // amountIn = 11 USDC (6d)
         uint256 amountIn = 11_000_000; // 11.000000
-        uint256 fee      = (amountIn * initialFee) / 10_000; // 0.5% = 55_000
-        uint256 netIn    = amountIn - fee;                    // 10_94500
+        uint256 fee = (amountIn * initialFee) / 10_000; // 0.5% = 55_000
+        uint256 netIn = amountIn - fee; // 10_94500
 
         // Conversion vers 18d: * 1e12
-        uint256 netIn18  = uint256(netIn) * 1e12;            // 10.945e18
+        uint256 netIn18 = uint256(netIn) * 1e12; // 10.945e18
         // tokensOut = floor((netIn18 * 1e18 / nav) / 1e18) * 1e18
-        uint256 raw      = (netIn18 * 1e18) / initialNav;    // /2 => 5.4725e18
-        uint256 expectedOut = (raw / 1e18) * 1e18;           // floor -> 5e18
+        uint256 raw = (netIn18 * 1e18) / initialNav; // /2 => 5.4725e18
+        uint256 expectedOut = (raw / 1e18) * 1e18; // floor -> 5e18
 
         vm.prank(investor);
         usdc.approve(address(m2), amountIn);
@@ -442,7 +448,7 @@ contract ITFManagerTest is Test {
             treasury,
             oracle,
             initialNav, // 2e18
-            initialFee  // 50 bps
+            initialFee // 50 bps
         );
         vm.prank(tokenTreasury);
         assetToken.approve(address(m2), type(uint256).max);
@@ -460,9 +466,9 @@ contract ITFManagerTest is Test {
         // fee18 = 20e18 * 50 / 10000 = 0.1e18
         // net18 = 19.9e18
         // Convert 18d -> 6d : / 1e12
-        uint256 expectedGross6 = 20e18 / 1e12;      // 20_000_000
-        uint256 expectedFee6   = (expectedGross6 * initialFee) / 10_000; // 100_000
-        uint256 expectedNet6   = expectedGross6 - expectedFee6;          // 19_900_000
+        uint256 expectedGross6 = 20e18 / 1e12; // 20_000_000
+        uint256 expectedFee6 = (expectedGross6 * initialFee) / 10_000; // 100_000
+        uint256 expectedNet6 = expectedGross6 - expectedFee6; // 19_900_000
 
         uint256 user0 = usdc.balanceOf(investor);
         uint256 treas0 = usdc.balanceOf(treasury);
@@ -473,7 +479,8 @@ contract ITFManagerTest is Test {
         assertEq(out, expectedNet6, "amountOut (6d)");
         assertEq(usdc.balanceOf(investor) - user0, expectedNet6, "user gets net (6d)");
         assertEq(usdc.balanceOf(treasury) - treas0, expectedFee6, "treasury gets fee (6d)");
-        assertEq(assetToken.balanceOf(investor), 0, "tokens burned (transferred back to tokenTreasury)");
+        assertEq(
+            assetToken.balanceOf(investor), 0, "tokens burned (transferred back to tokenTreasury)"
+        );
     }
-
 }
