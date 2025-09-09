@@ -26,7 +26,7 @@ contract AssetToken is ERC20, Ownable {
         if (manager_ == address(0)) revert ManagerZero();
 
         _manager = manager_;
-        _mint(manager_, _supply);
+        _mint(manager_, _supply * 10 ** decimals());
     }
 
     function getManager() external view returns (address manager) {

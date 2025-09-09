@@ -12,3 +12,14 @@ line_length = 100
 tab_width = 4
 bracket_spacing = true
 wrap_comments = true
+
+[[profile.default.fs_permissions]]
+access = "read"
+path = "out"
+
+[[profile.default.fs_permissions]]
+access = "read-write"
+path = "./deployments"
+
+[coverage]
+exclude = ["script/*"]

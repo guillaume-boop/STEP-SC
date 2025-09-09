@@ -1,66 +1,62 @@
-## Foundry
+# STEP Smart Contracts
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+This package contains the smart contracts for the STEP platform — tokenized real estate ETFs (ITFs) deployed on Sepolia testnet.
 
-Foundry consists of:
+## Units & Conventions
 
--   **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
--   **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
--   **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
--   **Chisel**: Fast, utilitarian, and verbose solidity REPL.
+- **NAV**: `uint256` scaled to `1e18`.  
+  Example: `2e18` means NAV = 2.0 (2 baseAsset units per ITF).
+- **ITF Token**: ERC20, 18 decimals, supply fixed at deployment, floored to multiples of `1e18` on invest.
+- **Fees**: `feeBps` in basis points (bps).  
+  Example: `50` = 0.5%, `100` = 1%.
+- **Stale NAV**: `maxNavAge` (default = 1 day).  
+  If NAV is older than this threshold, `invest` and `redeem` revert with `StaleNav`.
 
-## Documentation
+## Key Contracts
 
-https://book.getfoundry.sh/
+- **AssetToken.sol**  
+  ERC20 representing a single ITF. Minted once at deployment to a treasury address. Immutable supply.
 
-## Usage
+- **ITFManager.sol**  
+  Manages NAV, fees, investments, and redemptions. Holds the base asset, distributes AssetTokens, and applies fee logic.
 
-### Build
+## Events
 
-```shell
-$ forge build
-```
+- `Invest(address investor, uint256 amountIn, uint256 tokensOut)`  
+  Emitted on investment. `amountIn` = gross baseAsset deposited, `tokensOut` = ITF tokens minted (floored).
 
-### Test
+- `Redeem(address investor, uint256 tokensIn, uint256 amountOut)`  
+  Emitted on redemption. `amountOut` = net baseAsset returned (fees deducted).
 
-```shell
-$ forge test
-```
+- `NavUpdated(uint256 oldNav, uint256 newNav)`  
+  Emitted when the oracle updates the NAV.
 
-### Format
+- `NavMaxAgeChanged(uint64 oldAge, uint64 newAge)`  
+  Emitted when the max NAV age parameter is updated.
 
-```shell
-$ forge fmt
-```
+- `OracleChanged(address oldOracle, address newOracle)`  
+- `FeeChanged(uint256 oldFee, uint256 newFee)`  
+- `TreasuryChanged(address oldTreasury, address newTreasury)`
 
-### Gas Snapshots
+## Errors
 
-```shell
-$ forge snapshot
-```
+- `AssetTokenZero()`, `BaseAssetZero()`, `TreasuryZero()`, `OracleZero()`  
+- `NavZero()`, `FeeTooHigh()`, `NotOracle()`  
+- `AmountInZero()`, `TokensOutZero()`, `StaleNav()`
 
-### Anvil
+## Deployment (Sepolia)
 
-```shell
-$ anvil
-```
+Deployment is done using Foundry scripts.  
+Addresses will be stored in `deployments/sepolia.json` after broadcasting.
 
-### Deploy
-
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
-
-### Cast
-
-```shell
-$ cast <subcommand>
-```
-
-### Help
-
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
-```
+```json
+{
+  "network": "sepolia",
+  "assetToken": "0x...",
+  "baseAsset": "0x...",
+  "itfManager": "0x...",
+  "treasury": "0x...",
+  "oracle": "0x...",
+  "block": 0,
+  "tx": "0x..."
+}
