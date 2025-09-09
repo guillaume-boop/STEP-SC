@@ -21,3 +21,5 @@ path = "out"
 access = "read-write"
 path = "./deployments"
 
+[coverage]
+exclude = ["script/*"]

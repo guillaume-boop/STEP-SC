@@ -2,31 +2,28 @@
 pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
-import "../src/AssetToken.sol"; // ajuste le chemin si nécessaire
+import "../src/AssetToken.sol";
 
 contract AssetTokenTest is Test {
     AssetToken token;
 
     string constant NAME = "STEP Paris";
     string constant SYMBOL = "ITF-PARIS";
-    uint256 constant SUPPLY = 500e18;
+    uint256 constant SUPPLY = 500;
     address manager = address(0xA11CE);
     address alice = address(0xB0B);
     address bob = address(0xC0B);
 
     function setUp() public {
-        // deployer = address(this) sera owner (OZ v5 via Ownable(msg.sender))
         token = new AssetToken(NAME, SYMBOL, SUPPLY, manager);
     }
-
-    // --- Constructor
 
     function test_Constructor_MintsToManagerAndSetsMetadata() public {
         assertEq(token.name(), NAME);
         assertEq(token.symbol(), SYMBOL);
         assertEq(token.decimals(), 18);
-        assertEq(token.totalSupply(), SUPPLY);
-        assertEq(token.balanceOf(manager), SUPPLY);
+        assertEq(token.totalSupply(), SUPPLY * 1e18);
+        assertEq(token.balanceOf(manager), SUPPLY * 1e18);
     }
 
     function test_Constructor_RevertIf_SupplyZero() public {
@@ -39,18 +36,14 @@ contract AssetTokenTest is Test {
         new AssetToken(NAME, SYMBOL, SUPPLY, address(0));
     }
 
-    // --- ERC20 smoke
-
     function test_Transfer_Works() public {
-        // manager -> alice
         vm.prank(manager);
         token.transfer(alice, 10e18);
         assertEq(token.balanceOf(alice), 10e18);
-        assertEq(token.balanceOf(manager), SUPPLY - 10e18);
+        assertEq(token.balanceOf(manager), (SUPPLY * 1e18) - 10e18);
     }
 
     function test_Allowance_Approve_TransferFrom() public {
-        // manager approuve bob, bob tire 5e18 vers lui-même
         vm.prank(manager);
         token.approve(bob, 5e18);
 
@@ -58,11 +51,9 @@ contract AssetTokenTest is Test {
         token.transferFrom(manager, bob, 5e18);
 
         assertEq(token.balanceOf(bob), 5e18);
-        assertEq(token.balanceOf(manager), SUPPLY - 5e18);
+        assertEq(token.balanceOf(manager), (SUPPLY * 1e18) - 5e18);
         assertEq(token.allowance(manager, bob), 0);
     }
-
-    // --- Admin setManager
 
     function test_SetManager_OnlyOwner() public {
         vm.prank(alice);
@@ -99,6 +90,6 @@ contract AssetTokenTest is Test {
         vm.prank(alice);
         token.transfer(bob, 10e18);
 
-        assertEq(token.totalSupply(), SUPPLY);
+        assertEq(token.totalSupply(), SUPPLY * 1e18);
     }
 }

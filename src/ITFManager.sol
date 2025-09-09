@@ -5,7 +5,9 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 import { SafeERC20, IERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "./AssetToken.sol";
+import "./Treasury.sol";
 
 contract ITFManager is Ownable, ReentrancyGuard, Pausable {
     using SafeERC20 for IERC20;
@@ -18,7 +20,7 @@ contract ITFManager is Ownable, ReentrancyGuard, Pausable {
     uint256 public feeBps;
     uint64 public navUpdatedAt;
     uint64 public maxNavAge = 1 days;
-    uint8 public immutable baseDecimals;
+    uint8  public immutable baseDecimals;
     uint256 private immutable scale;
 
     event NavUpdated(uint256 oldNav, uint256 newNav);
@@ -28,8 +30,11 @@ contract ITFManager is Ownable, ReentrancyGuard, Pausable {
     event FeeChanged(uint256 oldFee, uint256 newFee);
     event TreasuryChanged(address indexed oldTreasury, address indexed newTreasury);
     event NavMaxAgeChanged(uint64 oldAge, uint64 newAge);
+    event AssetTokenBound(address token);
 
     error AssetTokenZero();
+    error AssetTokenAlreadySet();
+    error InvalidAssetTokenManager();
     error BaseAssetZero();
     error TreasuryZero();
     error OracleZero();
@@ -42,44 +47,44 @@ contract ITFManager is Ownable, ReentrancyGuard, Pausable {
     error BaseDecimalsTooHigh();
 
     constructor(
-        address assetToken_,
-        address baseAsset_,
-        address treasury_,
-        address oracle_,
+        address _baseAsset,
+        address _treasury,
+        address _oracle,
         uint256 initialNav,
-        uint256 feeBps_
+        uint256 _feeBps
     ) Ownable(msg.sender) {
-        if (assetToken_ == address(0)) revert AssetTokenZero();
-        if (baseAsset_ == address(0)) revert BaseAssetZero();
-        if (treasury_ == address(0)) revert TreasuryZero();
-        if (oracle_ == address(0)) revert OracleZero();
-        if (initialNav == 0) revert NavZero();
-        if (feeBps_ > 10_000) revert FeeTooHigh();
+        if (_baseAsset == address(0)) revert BaseAssetZero();
+        if (_treasury  == address(0)) revert TreasuryZero();
+        if (_oracle    == address(0)) revert OracleZero();
+        if (initialNav == 0)           revert NavZero();
+        if (_feeBps > 10_000)          revert FeeTooHigh();
 
-        assetToken = AssetToken(assetToken_);
-        baseAsset = IERC20(baseAsset_);
-        treasury = treasury_;
-        oracle = oracle_;
-        nav = initialNav;
-        feeBps = feeBps_;
+        baseAsset = IERC20(_baseAsset);
+        treasury  = _treasury;
+        oracle    = _oracle;
+        nav       = initialNav;
+        feeBps    = _feeBps;
 
         uint8 dec = ERC20(address(baseAsset)).decimals();
         if (dec > 18) revert BaseDecimalsTooHigh();
         baseDecimals = dec;
-        scale = 10 ** (18 - dec);
+        scale        = 10 ** (18 - dec);
 
         navUpdatedAt = uint64(block.timestamp);
     }
 
-    function pause() external onlyOwner {
-        _pause();
+    function setAssetToken(address token) external onlyOwner {
+        if (address(assetToken) != address(0)) revert AssetTokenAlreadySet();
+        if (token == address(0))               revert AssetTokenZero();
+        AssetToken at = AssetToken(token);
+        if (at.getManager() != address(this))  revert InvalidAssetTokenManager();
+        assetToken = at;
+        emit AssetTokenBound(token);
     }
 
-    function unpause() external onlyOwner {
-        _unpause();
-    }
+    function pause() external onlyOwner { _pause(); }
+    function unpause() external onlyOwner { _unpause(); }
 
-    // --- Admin
     function setOracle(address newOracle) external onlyOwner {
         if (newOracle == address(0)) revert OracleZero();
         address old = oracle;
@@ -107,16 +112,14 @@ contract ITFManager is Ownable, ReentrancyGuard, Pausable {
         emit NavMaxAgeChanged(old, newAge);
     }
 
-    // --- Oracle
     function updateNav(uint256 newNav) external {
         if (msg.sender != oracle) revert NotOracle();
-        if (newNav == 0) revert NavZero();
+        if (newNav == 0)           revert NavZero();
         uint256 old = nav;
         nav = newNav;
-        navUpdatedAt = uint64(block.timestamp); // <= nouveau
+        navUpdatedAt = uint64(block.timestamp);
         emit NavUpdated(old, newNav);
     }
-    // --- Users
 
     modifier navFresh() {
         if (block.timestamp - navUpdatedAt > maxNavAge) revert StaleNav();
@@ -132,20 +135,17 @@ contract ITFManager is Ownable, ReentrancyGuard, Pausable {
     {
         if (amountIn == 0) revert AmountInZero();
         if (nav == 0) revert NavZero();
+        if (address(assetToken) == address(0)) revert AssetTokenZero();
 
-        uint256 fee = (amountIn * feeBps) / 10_000;
+        uint256 fee   = (amountIn * feeBps) / 10_000;
         uint256 netIn = amountIn - fee;
 
         uint256 netIn18 = _to18(netIn);
-        uint256 raw = (netIn18 * 1e18) / nav;
-        tokensOut = (raw / 1e18) * 1e18;
+        tokensOut = (netIn18 * 1e18) / nav;
         if (tokensOut == 0) revert TokensOutZero();
 
-        baseAsset.safeTransferFrom(msg.sender, address(this), netIn);
-        if (fee != 0) baseAsset.safeTransferFrom(msg.sender, treasury, fee);
-
-        address tokenTreasury = assetToken.getManager();
-        IERC20(address(assetToken)).safeTransferFrom(tokenTreasury, msg.sender, tokensOut);
+        baseAsset.safeTransferFrom(msg.sender, treasury, amountIn);
+        IERC20(address(assetToken)).safeTransfer(msg.sender, tokensOut);
 
         emit Invest(msg.sender, amountIn, tokensOut);
     }
@@ -158,19 +158,18 @@ contract ITFManager is Ownable, ReentrancyGuard, Pausable {
         returns (uint256 amountOut)
     {
         if (tokensIn == 0) revert AmountInZero();
+        if (address(assetToken) == address(0)) revert AssetTokenZero();
 
-        uint256 gross18 = (tokensIn * nav) / 1e18; // 18d
-        uint256 fee18 = (gross18 * feeBps) / 10_000; // 18d
-        uint256 net18 = gross18 - fee18; // 18d
+        uint256 gross18 = (tokensIn * nav) / 1e18;
+        uint256 fee18   = (gross18 * feeBps) / 10_000;
+        uint256 net18   = gross18 - fee18;
 
         amountOut = _from18(net18);
         uint256 fee = _from18(fee18);
 
-        address tokenTreasury = assetToken.getManager();
-        IERC20(address(assetToken)).safeTransferFrom(msg.sender, tokenTreasury, tokensIn);
-
-        baseAsset.safeTransfer(msg.sender, amountOut);
-        if (fee > 0) baseAsset.safeTransfer(treasury, fee);
+        IERC20(address(assetToken)).safeTransferFrom(msg.sender, address(this), tokensIn);
+        Treasury(treasury).withdraw(msg.sender, amountOut);
+        if (fee > 0) Treasury(treasury).withdraw(owner(), fee);
 
         emit Redeem(msg.sender, tokensIn, amountOut);
     }
